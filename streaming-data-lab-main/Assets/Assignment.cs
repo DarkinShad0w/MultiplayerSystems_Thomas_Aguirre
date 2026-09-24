@@ -157,7 +157,7 @@ static public class AssignmentPart1
 //  This will enable the needed UI/function calls for your to proceed with your assignment.
 static public class AssignmentConfiguration
 {
-    public const int PartOfAssignmentThatIsInDevelopment = 1;
+    public const int PartOfAssignmentThatIsInDevelopment = 2;
 }
 
 /*
@@ -193,17 +193,46 @@ Good luck, journey well.
 
 */
 
+public class Party
+{
+    public string name;
+    public LinkedList<PartyCharacter> partyCharacters = new LinkedList<PartyCharacter>();
+}
+
+
 static public class AssignmentPart2
 {
+    static private string SaveDirectory = "PartySaves";
 
     static List<string> listOfPartyNames;
+    static string currentPartyName;
+
+    static private string PathForName(string partyName)
+    {
+        return Path.Combine(SaveDirectory, partyName + ".txt");
+    }
 
     static public void GameStart()
     {
         listOfPartyNames = new List<string>();
-        listOfPartyNames.Add("sample 1");
-        listOfPartyNames.Add("sample 2");
-        listOfPartyNames.Add("sample 3");
+
+        if (!Directory.Exists(SaveDirectory))
+            Directory.CreateDirectory(SaveDirectory);
+
+        foreach (string filePath in Directory.GetFiles(SaveDirectory, "*.txt"))
+        {
+            listOfPartyNames.Add(Path.GetFileNameWithoutExtension(filePath));
+        }
+
+        if (listOfPartyNames.Count > 0)
+        {
+            LoadParty(listOfPartyNames[0]);
+        }
+        else
+        {
+            GameContent.RerollParty();
+            currentPartyName = null;
+        }
 
         GameContent.RefreshUI();
     }
@@ -215,19 +244,115 @@ static public class AssignmentPart2
 
     static public void LoadPartyDropDownChanged(string selectedName)
     {
+        LoadParty(selectedName);
         GameContent.RefreshUI();
+    }
+
+    static private void LoadParty(string partyName)
+    {
+        GameContent.partyCharacters = new LinkedList<PartyCharacter>();
+        currentPartyName = partyName;
+
+        string path = PathForName(partyName);
+        if (!File.Exists(path))
+        {
+            Debug.Log("No save file found for party: " + partyName);
+            return;
+        }
+
+        using (StreamReader reader = new StreamReader(path))
+        {
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                string[] mainParts = line.Split('|');
+                string[] stats = mainParts[0].Split(',');
+
+                int classID = int.Parse(stats[0]);
+                int health = int.Parse(stats[1]);
+                int mana = int.Parse(stats[2]);
+                int strength = int.Parse(stats[3]);
+                int agility = int.Parse(stats[4]);
+                int wisdom = int.Parse(stats[5]);
+
+                PartyCharacter pc = new PartyCharacter(classID, health, mana,
+                    strength, agility, wisdom);
+
+                if (mainParts.Length > 1 && !string.IsNullOrWhiteSpace(mainParts[1]))
+                {
+                    foreach (string e in mainParts[1].Split(','))
+                    {
+                        if (int.TryParse(e, out int equipID))
+                            pc.equipment.AddLast(equipID);
+                    }
+                }
+
+                GameContent.partyCharacters.AddLast(pc);
+            }
+        }
     }
 
     static public void SavePartyButtonPressed()
     {
+        string partyName = GameContent.GetPartyNameFromInput();
+
+        if (string.IsNullOrWhiteSpace(partyName))
+        {
+            Debug.Log("Cannot save party without a name.");
+            return;
+        }
+
+        using (StreamWriter writer = new StreamWriter(PathForName(partyName), false))
+        {
+            foreach (PartyCharacter pc in GameContent.partyCharacters)
+            {
+                string equipment = string.Join(",", pc.equipment);
+                string line = string.Join(",", pc.classID, pc.health,
+                    pc.mana, pc.strength, pc.agility, pc.wisdom) + "|" + equipment;
+
+                writer.WriteLine(line);
+            }
+        }
+
+        if (!listOfPartyNames.Contains(partyName))
+            listOfPartyNames.Add(partyName);
+
+        currentPartyName = partyName;
+
+        Debug.Log("Party '" + partyName + "' saved.");
+        GameContent.RefreshUI(); ;
+    }
+
+    static public void NewPartyButtonPressed()
+    {
+        GameContent.RerollParty();
+        currentPartyName = null;
+
         GameContent.RefreshUI();
     }
 
     static public void DeletePartyButtonPressed()
     {
+        if (string.IsNullOrEmpty(currentPartyName))
+        {
+            Debug.Log("No saved party currently active to delete.");
+            return;
+        }
+
+        string path = PathForName(currentPartyName);
+        if (File.Exists(path))
+            File.Delete(path);
+
+        listOfPartyNames.Remove(currentPartyName);
+        GameContent.partyCharacters = new LinkedList<PartyCharacter>();
+        currentPartyName = null;
+
+        Debug.Log("Party deleted.");
         GameContent.RefreshUI();
     }
-
 }
 
 #endregion
